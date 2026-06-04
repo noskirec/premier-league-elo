@@ -64,3 +64,25 @@ def test_process_match_does_not_mutate_input_ratings():
     ratings = {'p1': 1000.0}
     process_match(ratings, 'home', 'away', ['p1'], [], [], [])
     assert ratings['p1'] == 1000.0
+
+
+def test_process_match_sub_changes_who_receives_xg():
+    # p5 comes on for p1 at minute 65; shot at minute 70 should credit p5, not p1
+    ratings = {f'p{i}': 1000.0 for i in range(1, 7)}
+    subs = [{'minute': 65, 'player_off_id': 'p1', 'player_on_id': 'p5', 'team_id': 'home'}]
+    xg_events = [
+        {'minute': 30, 'xg': 0.3, 'shooting_team_id': 'home'},   # p1 on pitch
+        {'minute': 70, 'xg': 0.2, 'shooting_team_id': 'home'},   # p5 on pitch, p1 off
+    ]
+    _, deltas = process_match(
+        ratings=ratings,
+        home_team_id='home',
+        away_team_id='away',
+        home_starters=['p1', 'p2'],
+        away_starters=['p3', 'p4'],
+        substitutions=subs,
+        xg_events=xg_events,
+    )
+    assert abs(deltas['p1'] - 0.3) < 1e-9   # only minute-30 shot
+    assert abs(deltas['p5'] - 0.2) < 1e-9   # only minute-70 shot
+    assert abs(deltas['p2'] - 0.5) < 1e-9   # both shots (never subbed)
