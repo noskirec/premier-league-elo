@@ -41,6 +41,7 @@ def create_db(db_path: str) -> sqlite3.Connection:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
     conn.commit()
     return conn
@@ -85,13 +86,16 @@ def upsert_player_rating(conn: sqlite3.Connection, player_id: str, match_id: str
 
 
 def get_current_ratings(conn: sqlite3.Connection) -> Dict[str, float]:
+    # MAX(match_id) as tie-breaker when a player appears in two matches on the same date
     rows = conn.execute("""
         SELECT pr.player_id, pr.rating_after
         FROM player_ratings pr
         INNER JOIN (
-            SELECT player_id, MAX(date) AS max_date
+            SELECT player_id, MAX(date) AS max_date, MAX(match_id) AS max_match
             FROM player_ratings GROUP BY player_id
-        ) latest ON pr.player_id = latest.player_id AND pr.date = latest.max_date
+        ) latest ON pr.player_id = latest.player_id
+               AND pr.date = latest.max_date
+               AND pr.match_id = latest.max_match
     """).fetchall()
     return {row['player_id']: row['rating_after'] for row in rows}
 
