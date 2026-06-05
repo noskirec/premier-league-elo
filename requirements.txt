@@ -4,6 +4,7 @@ aiohttp>=3.9.0
 nest-asyncio>=1.6.0
 pandas>=2.0.0
 plotly>=5.18.0
+soccerdata>=0.3
 pytest>=7.4.0
 jupyter>=1.0.0
 ipykernel>=6.0.0
