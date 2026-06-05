@@ -1,5 +1,8 @@
+import logging
 import soccerdata as sd
-from typing import Dict, List
+from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 _ALIASES = {
     'wolverhampton wanderers': 'wolves',
@@ -30,35 +33,47 @@ def normalize_team_name(name: str) -> str:
 
 
 def _build_sub_events_from_events(events_df, game_id, home_team, away_team,
-                                   home_starters, away_starters) -> List[Dict]:
+                                   home_starters, away_starters) -> Optional[List[Dict]]:
     """
     Extract exact substitution minutes from match events DataFrame.
-    Returns list of sub dicts or empty list if events unavailable.
+
+    Returns:
+        None  — events data is unavailable for this match (caller should fall back).
+        []    — data is present but contains no substitutions (valid; do NOT fall back).
+        [...]  — list of substitution dicts.
     """
-    gev = events_df[events_df['game'] == game_id] if 'game' in events_df.columns else events_df.iloc[0:0]
+    if 'game' not in events_df.columns:
+        return None  # events data unavailable
+    gev = events_df[events_df['game'] == game_id]
+    if gev.empty:
+        return None  # no events data for this specific match
     sub_rows = gev[gev['type'].str.contains('Sub', case=False, na=False)]
-    if sub_rows.empty:
-        return []
-
+    # Return [] (not None) when data is present but has no subs — that's valid
     substitutions = []
-    all_starters = {pid: (home_team if pid in home_starters else away_team)
-                    for pid in home_starters + away_starters}
-
+    home_set = set(home_starters)
+    away_set = set(away_starters)
     for _, row in sub_rows.iterrows():
         minute = int(row.get('minute', 0) or 0)
         player_off = str(row.get('player', ''))
         player_on = str(row.get('notes', ''))  # fbref often puts the incoming player in notes
-        team = str(row.get('team', ''))
 
         off_pid = f"fb_{player_off}"
         on_pid = f"fb_{player_on}" if player_on and player_on != 'nan' else None
 
-        if off_pid in all_starters and on_pid:
+        # Determine team from which team the off player was on
+        if off_pid in home_set:
+            team_id = home_team
+        elif off_pid in away_set:
+            team_id = away_team
+        else:
+            continue  # unknown player, skip
+
+        if on_pid:
             substitutions.append({
                 'minute': minute,
                 'player_off_id': off_pid,
                 'player_on_id': on_pid,
-                'team_id': team,
+                'team_id': team_id,
             })
 
     return substitutions
@@ -115,7 +130,11 @@ def get_season_lineups(season_year: int) -> Dict[str, Dict]:
     # Try to get events for exact substitution minutes; fall back gracefully
     try:
         events_df = fbref.read_events().reset_index()
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "read_events() failed for season %s, falling back to minutes_played heuristic: %s",
+            season_year, e,
+        )
         events_df = None
 
     result = {}
@@ -149,15 +168,16 @@ def get_season_lineups(season_year: int) -> Dict[str, Dict]:
                 away_starters = [f"fb_{r['player']}" for _, r in starters_df.iterrows()]
 
         # Build substitutions — prefer exact minutes from events, fall back to minutes_played
-        if events_df is not None and not events_df.empty:
+        if events_df is not None:
             substitutions = _build_sub_events_from_events(
                 events_df, game_id, home, away, home_starters, away_starters
             )
         else:
-            substitutions = []
+            substitutions = None
 
-        if not substitutions:
-            # Fallback: infer from minutes_played in lineup
+        if substitutions is None:
+            # Events data unavailable — fall back to minutes_played heuristic
+            substitutions = []
             for team_name in [home, away]:
                 tdf = gdf[gdf['team'] == team_name]
                 starters_df = tdf[tdf['is_starter'].astype(bool)]
