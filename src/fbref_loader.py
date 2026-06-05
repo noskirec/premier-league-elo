@@ -111,7 +111,7 @@ def _build_sub_events_from_minutes(starters_df, bench_df, team_name) -> List[Dic
     return substitutions
 
 
-def get_season_lineups(season_year: int) -> Dict[str, Dict]:
+def get_season_lineups(season_year: int, rate_limit: int = 5) -> Dict[str, Dict]:
     """
     Pre-fetch all lineup data for one EPL season from fbref via soccerdata.
     soccerdata caches results to disk on first run; subsequent calls are instant.
@@ -121,8 +121,9 @@ def get_season_lineups(season_year: int) -> Dict[str, Dict]:
     where player IDs are "fb_{player_name}".
 
     season_year: calendar start year, e.g. 2022 for the 2022-23 season.
+    rate_limit: seconds between requests (default 5). Increase if fbref returns 403.
     """
-    fbref = sd.FBref(leagues="ENG-Premier League", seasons=season_year)
+    fbref = sd.FBref(leagues="ENG-Premier League", seasons=season_year, rate_limit=rate_limit)
 
     sched = fbref.read_schedule().reset_index()
     lineup_df = fbref.read_lineup().reset_index()
