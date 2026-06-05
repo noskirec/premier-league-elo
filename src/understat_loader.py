@@ -97,7 +97,9 @@ def parse_substitutions(roster: dict, team_key: str, team_id: str,
 
 def parse_shots(shots: dict, team_key: str, team_id: str, match_id: int) -> List[Dict]:
     """
-    Return list of shot dicts with keys: event_id, minute, xg, shooting_team_id, shooter_player_id.
+    Return list of shot dicts with keys: event_id, minute, xg, shooting_team_id.
+    shooter_player_id is intentionally omitted — fbref and understat use different
+    player ID namespaces and the field is not used in ELO calculation.
     """
     result = []
     for i, shot in enumerate(shots.get(team_key, [])):
@@ -109,6 +111,5 @@ def parse_shots(shots: dict, team_key: str, team_id: str, match_id: int) -> List
             'minute': int(shot.get('minute', 0)),
             'xg': xg,
             'shooting_team_id': team_id,
-            'shooter_player_id': f"us_{shot.get('player_id', '')}"
         })
     return result
